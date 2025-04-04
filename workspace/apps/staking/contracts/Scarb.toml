@@ -1,0 +1,37 @@
+[package]
+name = "staking"
+version = "1.14.5"
+edition = "2023_11"
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+starkware_utils.workspace = true
+
+[dev-dependencies]
+assert_macros.workspace = true
+snforge_std.workspace = true
+snforge_scarb_plugin.workspace = true
+starkware_utils_testing.workspace = true
+
+[profile.dev.cairo]
+unstable-add-statements-code-locations-debug-info = true
+unstable-add-statements-functions-debug-info = true
+inlining-strategy = "avoid"
+
+[scripts]
+test = "SNFORGE_BACKTRACE=1 snforge test"
+
+[lib]
+
+[[target.starknet-contract]]
+
+[[test]]
+name = "contracts_unittest"
+build-external-contracts = ["starkware_utils::erc20_mocks::DualCaseERC20Mock"]
+
+[tool.fmt]
+sort-module-level-items = true
+
+[tool]
+snforge.workspace = true

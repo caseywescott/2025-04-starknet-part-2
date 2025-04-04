@@ -1,0 +1,15 @@
+{
+  "name": "@staking/contracts",
+  "version": "1.0.1-dev.452",
+  "private": true,
+  "description": "staking contracts",
+  "scripts": {
+    "build": "scarb build",
+    "clean": "scarb clean && snforge clean-cache",
+    "dev": "scarb cairo-run",
+    "format": "pnpm sort-package-json && scarb fmt",
+    "postinstall": "node ../../../../scripts/install-scarb.js",
+    "lint": "scarb fmt --check",
+    "test": "scarb test"
+  }
+}
