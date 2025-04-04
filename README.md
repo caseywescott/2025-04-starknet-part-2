@@ -41,8 +41,6 @@ This project holds the implementation of Starknet's staking mechanism v2, follow
 - **Security Roles:**
   - **Security Admin:** Unpauses contracts and can replace the security agent.
   - **Security Agent:** Can pause staking contracts in case of issues.
-- **Operator:** 
-  - The only role that can call state-changing functions in the staking core contract.
 - **L1 Mint Manager:**
   - Handles minting of STRK as allowed by governance.
   - **AllowanceGovernor:** Can authorize minting.
