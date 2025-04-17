@@ -1,3 +1,4 @@
+use core::fmt::Formatter;
 use core::num::traits::Zero;
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
 use staking::attestation::attestation::Attestation;
@@ -348,4 +349,136 @@ fn test_attest_role_assertions() {
     let attestation_dispatcher = IAttestationDispatcher { contract_address: attestation_contract };
     // Catch ONLY_APP_GOVERNOR.
     attestation_dispatcher.set_attestation_window(attestation_window: MIN_ATTESTATION_WINDOW);
+}
+
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_attestation_window_exploitation() {
+    // Summary:
+    // The attestation window is a critical parameter that determines when validators can submit
+    // attestations.
+    // This test demonstrates a vulnerability where the app governor can maliciously shrink the
+    // attestation window to prevent validators from attesting, potentially disrupting network
+    // operations.
+    //
+    // Impact:
+    // - High Severity: The app governor can manipulate the attestation window to:
+    //   * Prevent validators from attesting within their designated time slots
+    //   * Disrupt network consensus by forcing validators to miss attestations
+    //   * Potentially cause validators to lose rewards or face penalties
+    //   * Create network instability by reducing the time window for attestations
+    //
+    // Testing Approach:
+    // 1. Set up a normal attestation window (100 blocks)
+    // 2. Calculate the validator's expected attestation block
+    // 3. Advance to just before the attestation window
+    // 4. Have the app governor maliciously shrink the window to minimum size
+    // 5. Attempt to attest (should fail)
+    // 6. Verify the attestation failed as expected
+    //
+    // Recommendations:
+    // 1. Implement minimum and maximum bounds for attestation window changes
+    // 2. Add a cooldown period between window changes
+    // 3. Require multi-signature approval for window changes
+    // 4. Implement a voting mechanism for significant parameter changes
+    // 5. Add logging and monitoring for window changes
+    // 6. Consider making the window size immutable after initial setup
+    //
+    // command to run: snforge test test_attestation_window_exploitation
+
+    // Initialize test environment
+    let mut cfg: StakingInitConfig = Default::default();
+    general_contract_system_deployment(ref :cfg);
+    let staking_contract = cfg.test_info.staking_contract;
+    let token_address = cfg.staking_contract_info.token_address;
+
+    // Stake tokens to become a validator
+    stake_for_testing_using_dispatcher(:cfg, :token_address, :staking_contract);
+    let attestation_contract = cfg.test_info.attestation_contract;
+    let attestation_dispatcher = IAttestationDispatcher { contract_address: attestation_contract };
+    let attestation_safe_dispatcher = IAttestationSafeDispatcher {
+        contract_address: attestation_contract,
+    };
+    let operational_address = cfg.staker_info.operational_address;
+    let staker_address = cfg.test_info.staker_address;
+
+    // Set initial attestation window to 100 blocks and verify
+    cheat_caller_address_once(
+        contract_address: attestation_contract, caller_address: cfg.test_info.app_governor,
+    );
+    attestation_dispatcher.set_attestation_window(attestation_window: 100);
+    let initial_window = attestation_dispatcher.attestation_window();
+    assert!(initial_window == 100, "Initial window should be 100 blocks");
+
+    // Advance to next epoch to ensure validator has stake
+    advance_epoch_global();
+
+    // Calculate validator's target attestation block under normal window
+    let normal_window = attestation_dispatcher.attestation_window();
+    let block_offset = calculate_block_offset(
+        stake: cfg.test_info.stake_amount.into(),
+        epoch_id: cfg.staking_contract_info.epoch_info.current_epoch().into(),
+        staker_address: staker_address.into(),
+        epoch_len: cfg.staking_contract_info.epoch_info.epoch_len_in_blocks().into(),
+        attestation_window: normal_window,
+    );
+
+    // Get current epoch info
+    let staking_dispatcher = IStakingDispatcher { contract_address: staking_contract };
+    let epoch_info = staking_dispatcher.get_epoch_info();
+    let current_epoch_start = epoch_info.current_epoch_starting_block();
+
+    // Calculate expected attestation block
+    let expected_attestation_block = current_epoch_start
+        + block_offset
+        + MIN_ATTESTATION_WINDOW.into();
+
+    // Advance to just before the attestation window
+    let current_block = get_block_number();
+    let blocks_to_advance = if current_block < expected_attestation_block {
+        expected_attestation_block - current_block - 1
+    } else {
+        0
+    };
+    advance_block_number_global(blocks: blocks_to_advance);
+    let current_block = get_block_number();
+
+    // Print initial timing details
+    let mut formatter: Formatter = Default::default();
+    writeln!(formatter, "Initial timing:").expect('write failed');
+    writeln!(formatter, "Current block: {}", current_block).expect('write failed');
+    writeln!(formatter, "Expected attestation block: {}", expected_attestation_block)
+        .expect('write failed');
+    writeln!(formatter, "Original window size: {} blocks", initial_window).expect('write failed');
+    println!("{}", formatter.buffer);
+
+    // App governor maliciously shrinks the window to minimum size
+    cheat_caller_address_once(
+        contract_address: attestation_contract, caller_address: cfg.test_info.app_governor,
+    );
+    attestation_dispatcher.set_attestation_window(attestation_window: MIN_ATTESTATION_WINDOW);
+    let new_window = attestation_dispatcher.attestation_window();
+    assert!(new_window == MIN_ATTESTATION_WINDOW, "Window should be shrunk to minimum");
+
+    // Print window change details
+    let mut formatter: Formatter = Default::default();
+    writeln!(formatter, "After window change:").expect('write failed');
+    writeln!(formatter, "New window size: {} blocks", new_window).expect('write failed');
+    println!("{}", formatter.buffer);
+
+    // Try to attest - should fail because window was shrunk
+    cheat_caller_address_once(
+        contract_address: attestation_contract, caller_address: operational_address,
+    );
+    let result = attestation_safe_dispatcher.attest(block_hash: Zero::zero());
+
+    // Assert the specific error for attestation being out of window
+    assert_panic_with_error(:result, expected_error: Error::ATTEST_OUT_OF_WINDOW.describe());
+    println!("Attestation Status: FAILED (as expected)");
+
+    // Verify attestation failed
+    let is_attestation_done = attestation_dispatcher
+        .is_attestation_done_in_curr_epoch(:staker_address);
+    assert!(is_attestation_done == false, "Attestation should have failed");
 }
