@@ -408,8 +408,8 @@ fn test_attestation_window_exploitation() {
         contract_address: attestation_contract, caller_address: cfg.test_info.app_governor,
     );
     attestation_dispatcher.set_attestation_window(attestation_window: 100);
-    let initial_window = attestation_dispatcher.attestation_window();
-    assert!(initial_window == 100, "Initial window should be 100 blocks");
+    let original_window = attestation_dispatcher.attestation_window();
+    assert!(original_window == 100, "Initial window should be 100 blocks");
 
     // Advance to next epoch to ensure validator has stake
     advance_epoch_global();
@@ -430,27 +430,27 @@ fn test_attestation_window_exploitation() {
     let current_epoch_start = epoch_info.current_epoch_starting_block();
 
     // Calculate expected attestation block
-    let expected_attestation_block = current_epoch_start
+    let target_attestation_block = current_epoch_start
         + block_offset
         + MIN_ATTESTATION_WINDOW.into();
 
     // Advance to just before the attestation window
-    let current_block = get_block_number();
-    let blocks_to_advance = if current_block < expected_attestation_block {
-        expected_attestation_block - current_block - 1
+    let current_block_number = get_block_number();
+    let blocks_to_advance = if current_block_number < target_attestation_block {
+        target_attestation_block - current_block_number - 1
     } else {
         0
     };
     advance_block_number_global(blocks: blocks_to_advance);
-    let current_block = get_block_number();
+    let current_block_number = get_block_number();
 
     // Print initial timing details
     let mut formatter: Formatter = Default::default();
     writeln!(formatter, "Initial timing:").expect('write failed');
-    writeln!(formatter, "Current block: {}", current_block).expect('write failed');
-    writeln!(formatter, "Expected attestation block: {}", expected_attestation_block)
+    writeln!(formatter, "Current block: {}", current_block_number).expect('write failed');
+    writeln!(formatter, "Expected attestation block: {}", target_attestation_block)
         .expect('write failed');
-    writeln!(formatter, "Original window size: {} blocks", initial_window).expect('write failed');
+    writeln!(formatter, "Original window size: {} blocks", original_window).expect('write failed');
     println!("{}", formatter.buffer);
 
     // App governor maliciously shrinks the window to minimum size
@@ -481,4 +481,109 @@ fn test_attestation_window_exploitation() {
     let is_attestation_done = attestation_dispatcher
         .is_attestation_done_in_curr_epoch(:staker_address);
     assert!(is_attestation_done == false, "Attestation should have failed");
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_attestation_success_under_normal_window() {
+    // Summary:
+    // This test demonstrates a successful attestation under normal conditions with a standard
+    // attestation window. It shows that validators can successfully attest when the window
+    // is properly configured and they submit their attestation at the correct time.
+    //
+    // Testing Approach:
+    // 1. Set up a normal attestation window (100 blocks)
+    // 2. Calculate the validator's expected attestation block
+    // 3. Advance to just before the attestation window
+    // 4. Submit a valid attestation
+    // 5. Verify the attestation succeeded
+    //
+    // To run both the exploitation and success tests:
+    // snforge test attestation_window
+    // This will run both test_attestation_window_exploitation and
+    // test_attestation_success_under_normal_window
+
+    // Initialize test environment
+    let mut cfg: StakingInitConfig = Default::default();
+    general_contract_system_deployment(ref :cfg);
+    let staking_contract = cfg.test_info.staking_contract;
+    let token_address = cfg.staking_contract_info.token_address;
+
+    // Stake tokens to become a validator
+    stake_for_testing_using_dispatcher(:cfg, :token_address, :staking_contract);
+    let attestation_contract = cfg.test_info.attestation_contract;
+    let attestation_dispatcher = IAttestationDispatcher { contract_address: attestation_contract };
+    let attestation_safe_dispatcher = IAttestationSafeDispatcher {
+        contract_address: attestation_contract,
+    };
+    let operational_address = cfg.staker_info.operational_address;
+    let staker_address = cfg.test_info.staker_address;
+
+    // Set attestation window to 100 blocks and verify
+    cheat_caller_address_once(
+        contract_address: attestation_contract, caller_address: cfg.test_info.app_governor,
+    );
+    attestation_dispatcher.set_attestation_window(attestation_window: 100);
+    let original_window = attestation_dispatcher.attestation_window();
+    assert!(original_window == 100, "Initial window should be 100 blocks");
+
+    // Advance to next epoch to ensure validator has stake
+    advance_epoch_global();
+
+    // Calculate validator's target attestation block under normal window
+    let normal_window = attestation_dispatcher.attestation_window();
+    let block_offset = calculate_block_offset(
+        stake: cfg.test_info.stake_amount.into(),
+        epoch_id: cfg.staking_contract_info.epoch_info.current_epoch().into(),
+        staker_address: staker_address.into(),
+        epoch_len: cfg.staking_contract_info.epoch_info.epoch_len_in_blocks().into(),
+        attestation_window: normal_window,
+    );
+
+    // Get current epoch info
+    let staking_dispatcher = IStakingDispatcher { contract_address: staking_contract };
+    let epoch_info = staking_dispatcher.get_epoch_info();
+    let current_epoch_start = epoch_info.current_epoch_starting_block();
+
+    // Calculate target attestation block
+    let target_attestation_block = current_epoch_start
+        + block_offset
+        + MIN_ATTESTATION_WINDOW.into();
+
+    // Advance to just before the attestation window
+    let current_block_number = get_block_number();
+    let blocks_to_advance = if current_block_number < target_attestation_block {
+        target_attestation_block - current_block_number - 1
+    } else {
+        0
+    };
+    advance_block_number_global(blocks: blocks_to_advance);
+    let current_block_number = get_block_number();
+
+    // Print initial timing details
+    let mut formatter: Formatter = Default::default();
+    writeln!(formatter, "Initial timing:").expect('write failed');
+    writeln!(formatter, "Current block: {}", current_block_number).expect('write failed');
+    writeln!(formatter, "Target attestation block: {}", target_attestation_block)
+        .expect('write failed');
+    writeln!(formatter, "Attestation window size: {} blocks", original_window)
+        .expect('write failed');
+    println!("{}", formatter.buffer);
+
+    // Submit attestation
+    cheat_caller_address_once(
+        contract_address: attestation_contract, caller_address: operational_address,
+    );
+    attestation_safe_dispatcher.attest(block_hash: Zero::zero());
+
+    // Verify attestation succeeded
+    let is_attestation_done = attestation_dispatcher
+        .is_attestation_done_in_curr_epoch(:staker_address);
+    assert!(is_attestation_done == true, "Attestation should have succeeded");
+
+    // Print success message
+    let mut formatter: Formatter = Default::default();
+    writeln!(formatter, "[SUCCESS] Successful attestation under normal window")
+        .expect('write failed');
+    println!("{}", formatter.buffer);
 }
