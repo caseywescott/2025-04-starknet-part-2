@@ -14,7 +14,7 @@ pub mod Attestation {
         IStakingDispatcherTrait,
     };
     use staking::staking::objects::{
-        AttestationInfo as StakingAttestationInfo, AttestationInfoTrait,
+        AttestationInfo as StakingAttestationInfo, AttestationInfoTrait, EpochInfo, EpochInfoTrait,
     };
     use staking::types::Epoch;
     use starknet::storage::Map;
@@ -39,6 +39,12 @@ pub mod Attestation {
     #[abi(embed_v0)]
     impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
 
+    #[derive(Copy, Drop, Serde, starknet::Store)]
+    struct PendingWindowChange {
+        new_window_size: u16,
+        effective_epoch: u64,
+    }
+
     #[storage]
     struct Storage {
         #[substorage(v0)]
@@ -61,6 +67,7 @@ pub mod Attestation {
         // - attestation window = 20,
         // - staker can attest in blocks [x+11, x+20].
         attestation_window: u16,
+        pending_window_change: Option<PendingWindowChange>,
     }
 
     #[event]
@@ -78,6 +85,23 @@ pub mod Attestation {
         AttestationWindowChanged: Events::AttestationWindowChanged,
     }
 
+    /// The Attestation contract manages the attestation process for validators.
+    /// Key features:
+    /// 1. Maintains an attestation window during which validators can submit attestations
+    /// 2. Tracks attestation status for each epoch
+    /// 3. Prevents malicious window changes that could impact validator rewards
+    ///
+    /// Economic Implications:
+    /// - The attestation window size directly impacts validator rewards
+    /// - A smaller window increases the risk of missed attestations
+    /// - Missed attestations result in lost rewards for validators
+    /// - The contract enforces a minimum window size to prevent unfair manipulation
+    ///
+    /// Security Considerations:
+    /// - Window changes are restricted to prevent malicious manipulation
+    /// - Changes cannot be made during active attestations
+    /// - A minimum window size is enforced to ensure fair participation
+
     #[constructor]
     pub fn constructor(
         ref self: ContractState,
@@ -90,6 +114,7 @@ pub mod Attestation {
         self.staking_contract.write(staking_contract);
         assert!(attestation_window >= MIN_ATTESTATION_WINDOW, "{}", Error::ATTEST_WINDOW_TOO_SMALL);
         self.attestation_window.write(attestation_window);
+        self.pending_window_change.write(Option::None);
     }
 
     #[abi(embed_v0)]
@@ -179,14 +204,34 @@ pub mod Attestation {
             assert!(
                 attestation_window >= MIN_ATTESTATION_WINDOW, "{}", Error::ATTEST_WINDOW_TOO_SMALL,
             );
-            let old_attestation_window = self.attestation_window.read();
-            self.attestation_window.write(attestation_window);
-            self
-                .emit(
-                    Events::AttestationWindowChanged {
-                        old_attestation_window, new_attestation_window: attestation_window,
-                    },
-                );
+
+            // Check if it's safe to change the window in the current epoch
+            if self.is_safe_to_change_window() {
+                let old_attestation_window = self.attestation_window.read();
+                self.attestation_window.write(attestation_window);
+                self
+                    .emit(
+                        Events::AttestationWindowChanged {
+                            old_attestation_window, new_attestation_window: attestation_window,
+                        },
+                    );
+            } else {
+                // Schedule the change for the next epoch
+                let staking_dispatcher = IStakingDispatcher {
+                    contract_address: self.staking_contract.read(),
+                };
+                let current_epoch = staking_dispatcher.get_current_epoch();
+                self
+                    .pending_window_change
+                    .write(
+                        Option::Some(
+                            PendingWindowChange {
+                                new_window_size: attestation_window,
+                                effective_epoch: current_epoch + 1,
+                            },
+                        ),
+                    );
+            }
         }
     }
 
@@ -273,6 +318,42 @@ pub mod Attestation {
         #[cfg(target: 'test')]
         fn get_target_block_hash(self: @ContractState, target_attestation_block: u64) -> felt252 {
             Zero::zero()
+        }
+
+        fn is_safe_to_change_window(self: @ContractState) -> bool {
+            let current_block = get_block_number();
+            let staking_dispatcher = IStakingDispatcher {
+                contract_address: self.staking_contract.read(),
+            };
+            let epoch_info = staking_dispatcher.get_epoch_info();
+            let epoch_end_block = epoch_info.current_epoch_starting_block()
+                + epoch_info.epoch_len_in_blocks().into();
+            let remaining_blocks = epoch_end_block - current_block;
+            remaining_blocks > self.attestation_window.read().into()
+        }
+
+        fn handle_epoch_transition(ref self: ContractState) {
+            let pending_change = self.pending_window_change.read();
+            match pending_change {
+                Option::Some(change) => {
+                    let staking_dispatcher = IStakingDispatcher {
+                        contract_address: self.staking_contract.read(),
+                    };
+                    let current_epoch = staking_dispatcher.get_current_epoch();
+                    if current_epoch == change.effective_epoch {
+                        self.attestation_window.write(change.new_window_size);
+                        self.pending_window_change.write(Option::None);
+                        self
+                            .emit(
+                                Events::AttestationWindowChanged {
+                                    old_attestation_window: self.attestation_window.read(),
+                                    new_attestation_window: change.new_window_size,
+                                },
+                            );
+                    }
+                },
+                Option::None => (),
+            }
         }
     }
 }

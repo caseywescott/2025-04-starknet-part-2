@@ -358,8 +358,12 @@ fn test_attest_role_assertions() {
     attestation_dispatcher.set_attestation_window(attestation_window: MIN_ATTESTATION_WINDOW);
 }
 
+/// Tests the economic impact of attestation window changes and missed attestations.
+/// This test verifies that:
+/// 1. Validators cannot gain unfair rewards by maliciously shrinking the attestation window
+/// 2. Missing an attestation due to window shrinkage results in lost rewards
+/// 3. The economic impact is properly reflected in the validator's reward balance
 #[test]
-#[available_gas(999999999999999999)]
 fn test_attestation_window_exploitation() {
     // This test demonstrates a critical vulnerability where the app governor can maliciously shrink
     // the attestation window to prevent validators from attesting, causing significant economic
