@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starknet V2 State Bloat Attack Analysis</title>
+    <!-- Import Chart.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chart-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        .findings {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        .findings ul {
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>Starknet V2 Staking Contract State Bloat Attack Analysis</h1>
+    
+    <div class="chart-container">
+        <h2>Storage Impact</h2>
+        <canvas id="storageChart"></canvas>
+    </div>
+    
+    <div class="chart-container">
+        <h2>Gas Usage Analysis</h2>
+        <canvas id="gasChart"></canvas>
+    </div>
+    
+    <div class="chart-container">
+        <h2>Per-Attacker Efficiency</h2>
+        <canvas id="efficiencyChart"></canvas>
+    </div>
+    
+    <div class="findings">
+        <h2>Key Findings</h2>
+        <ul>
+            <li><strong>Perfect linear scaling for storage:</strong> The final storage grows exactly proportionally to the number of attackers (scaling factor: 1.0)</li>
+            <li><strong>L2 gas usage scales slightly sub-linearly</strong> with the number of attackers (scaling factor: 0.95), showing small efficiency gains as the attack scales</li>
+            <li><strong>L1 data gas shows significant sub-linear scaling</strong> (scaling factor: 0.86), indicating better efficiency at scale</li>
+            <li><strong>Per-attacker efficiency improves</strong> as the number of attackers increases, with the most significant improvement seen when scaling from 10 to 20 attackers</li>
+            <li>Each attacker requires exactly <strong>20,000 ETH</strong> as minimal stake amount for all test runs</li>
+        </ul>
+    </div>
+
+    <script>
+        // Test result data
+        const testResults = [
+            {
+                attackers: 10,
+                finalStorage: 200000000000000000000000,
+                storageEth: 200000,
+                l1DataGas: 17664,
+                l2Gas: 76705280,
+                l2GasPerAttacker: 7670528,
+                l1DataGasPerAttacker: 1766.4
+            },
+            {
+                attackers: 20,
+                finalStorage: 400000000000000000000000,
+                storageEth: 400000,
+                l1DataGas: 26304,
+                l2Gas: 136770880,
+                l2GasPerAttacker: 6838544,
+                l1DataGasPerAttacker: 1315.2
+            },
+            {
+                attackers: 40,
+                finalStorage: 800000000000000000000000,
+                storageEth: 800000,
+                l1DataGas: 43584,
+                l2Gas: 256942080,
+                l2GasPerAttacker: 6423552,
+                l1DataGasPerAttacker: 1089.6
+            },
+            {
+                attackers: 80,
+                finalStorage: 1600000000000000000000000,
+                storageEth: 1600000,
+                l1DataGas: 78144,
+                l2Gas: 497164480,
+                l2GasPerAttacker: 6214556,
+                l1DataGasPerAttacker: 976.8
+            },
+            {
+                attackers: 100,
+                finalStorage: 2000000000000000000000000,
+                storageEth: 2000000,
+                l1DataGas: 95424,
+                l2Gas: 617295680,
+                l2GasPerAttacker: 6172956.8,
+                l1DataGasPerAttacker: 954.24
+            }
+        ];
+
+        // Extract data for charts
+        const attackerCounts = testResults.map(item => item.attackers);
+        const storageEth = testResults.map(item => item.storageEth);
+        const l2Gas = testResults.map(item => item.l2Gas);
+        const l1DataGas = testResults.map(item => item.l1DataGas);
+        const l2GasPerAttacker = testResults.map(item => item.l2GasPerAttacker);
+        const l1DataGasPerAttacker = testResults.map(item => item.l1DataGasPerAttacker);
+
+        // Format numbers for tooltips
+        function formatNumber(value) {
+            if (value >= 1000000) {
+                return (value / 1000000).toFixed(2) + 'M';
+            } else if (value >= 1000) {
+                return (value / 1000).toFixed(2) + 'K';
+            }
+            return value.toFixed(2);
+        }
+
+        // Storage Chart
+        const storageCtx = document.getElementById('storageChart').getContext('2d');
+        new Chart(storageCtx, {
+            type: 'line',
+            data: {
+                labels: attackerCounts,
+                datasets: [{
+                    label: 'Final Storage (ETH)',
+                    data: storageEth,
+                    borderColor: '#8884d8',
+                    backgroundColor: 'rgba(136, 132, 216, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.1,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#8884d8'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Number of Attackers'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Final Storage (ETH)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatNumber(value);
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + formatNumber(context.raw);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Gas Usage Chart
+        const gasCtx = document.getElementById('gasChart').getContext('2d');
+        new Chart(gasCtx, {
+            type: 'line',
+            data: {
+                labels: attackerCounts,
+                datasets: [{
+                    label: 'L2 Gas',
+                    data: l2Gas,
+                    borderColor: '#82ca9d',
+                    backgroundColor: 'rgba(130, 202, 157, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.1,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#82ca9d'
+                },
+                {
+                    label: 'L1 Data Gas',
+                    data: l1DataGas,
+                    borderColor: '#ff7300',
+                    backgroundColor: 'rgba(255, 115, 0, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.1,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#ff7300',
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Number of Attackers'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'L2 Gas'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatNumber(value);
+                            }
+                        }
+                    },
+                    y1: {
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'L1 Data Gas'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatNumber(value);
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + formatNumber(context.raw);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Per-Attacker Efficiency Chart
+        const efficiencyCtx = document.getElementById('efficiencyChart').getContext('2d');
+        new Chart(efficiencyCtx, {
+            type: 'bar',
+            data: {
+                labels: attackerCounts,
+                datasets: [{
+                    label: 'L2 Gas Per Attacker',
+                    data: l2GasPerAttacker,
+                    backgroundColor: 'rgba(130, 202, 157, 0.7)',
+                    borderColor: '#82ca9d',
+                    borderWidth: 1
+                },
+                {
+                    label: 'L1 Data Gas Per Attacker',
+                    data: l1DataGasPerAttacker,
+                    backgroundColor: 'rgba(255, 115, 0, 0.7)',
+                    borderColor: '#ff7300',
+                    borderWidth: 1,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Number of Attackers'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'L2 Gas Per Attacker'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatNumber(value);
+                            }
+                        }
+                    },
+                    y1: {
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'L1 Data Gas Per Attacker'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return formatNumber(value);
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + formatNumber(context.raw);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
