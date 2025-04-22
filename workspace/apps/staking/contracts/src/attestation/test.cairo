@@ -393,7 +393,7 @@ fn test_state_bloat_attack() {
     let token_address = cfg.staking_contract_info.token_address;
 
     // Test parameters
-    let num_attackers: u32 = 10;
+    let num_attackers: u32 = 100;
     let min_stake_amount = staking_dispatcher
         .contract_parameters_v1()
         .min_stake; // Use actual minimum stake amount
@@ -405,34 +405,307 @@ fn test_state_bloat_attack() {
     // List of attacker addresses
     let attacker_addresses = array![
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612254B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612254B7eC9E6371C1A,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612264B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612264B7eC9E6371C1B,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612274B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612274B7eC9E6371C1C,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612284B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612284B7eC9E6371C1D,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612294B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612294B7eC9E6371C1E,
         >(),
         contract_address_const::<
             0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612241B7eC9E6371C1F,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612242B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612242B7eC9E6371C0F,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612243B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612243B7eC9E6371C2F,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612244B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612244B7eC9E6371C3F,
         >(),
         contract_address_const::<
-            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612245B7eC9E6371C1F,
+            0x03896fb19EaFd5A682386AEFc2D9d027da9615743c004612245B7eC9E6371C4F,
+        >(),
+        contract_address_const::<
+            0x00896fb19EaFd5A682386AEFc2D9d027da9615743c004612245B7eC9E6371C5F,
+        >(),
+        contract_address_const::<
+            0x00096fb19EaFd5A682386AEF92D9d027da9615743c004612245B7eC9E6371C6F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEF82D9d027da9615743c004612245B7eC9E6371C7F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEF72D9d027da9615743c004612245B7eC9E6371C8F,
+        >(),
+        contract_address_const::<
+            0x00002fb19EaFd5A682386AEF62D9d027da9615743c004612245B7eC9E6371C9F,
+        >(),
+        contract_address_const::<
+            0x00001fb19EaFd5A682386AEF52D9d027da9615743c004612245B7eC9E6371CAF,
+        >(),
+        contract_address_const::<
+            0x00007fb19EaFd5A682386AEF42D9d027da9615743c004612245B7eC9E6371CBF,
+        >(),
+        contract_address_const::<
+            0x00008fb19EaFd5A682386AEF32D9d027da9615743c004612245B7eC9E6371CCF,
+        >(),
+        contract_address_const::<
+            0x00009fb19EaFd5A682386AEF22D9d027da9615743c004612245B7eC9E6371CDF,
+        >(),
+        contract_address_const::<
+            0x00011fb19EaFd5A682386AEF12D9d027da9615743c004612245B7eC9E6371CEF,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A682386AEF02D9d027da9615743c004612245B7eC9E637101F,
+        >(),
+        contract_address_const::<
+            0x00208fb19EaFd5A682386AEFc9D9d027da9615743c004612245B7eC9E637111F,
+        >(),
+        contract_address_const::<
+            0x00309fb19EaFd5A682386AEFc8D9d027da9615743c004612245B7eC9E637121F,
+        >(),
+        contract_address_const::<
+            0x00409fb19EaFd5A682386AEFc7D9d027da9615743c004612245B7eC9E637131F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc6D9d027da9615743c004612254B7eC9E6371C1A,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc5D9d027da9615743c004612264B7eC9E6301C1B,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc4D9d027da9615743c004612274B7eC9E6311C1C,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc3D9d027da9615743c004612284B7eC9E6321C1D,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc1D9d027da9615743c004612294B7eC9E6331C1E,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc0D9d027da9615743c004612241B7eC9E6341C1F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2C9d027da9615743c004612242B7eC9E6351C0F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2B9d027da9615743c004612243B7eC9E6361C2F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2A9d027da9615743c004612244B7eC9E6381C3F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc289d027da9615743c004612245B7eC9E6391C4F,
+        >(),
+        contract_address_const::<
+            0x00896fb19EaFd5A682386AEFc279d027da9615743c004612245B7eC9E63A1C5F,
+        >(),
+        contract_address_const::<
+            0x00096fb19EaFd5A682386AEFc269d027da9615743c004612245B7eC9E63B1C6F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc259d027da9615743c004612245B7eC9E63C1C7F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc249d027da9615743c004612245B7eC9E63D1C8F,
+        >(),
+        contract_address_const::<
+            0x00002fb19EaFd5A682386AEFc239d027da9615743c004612245B7eC9E63E1C9F,
+        >(),
+        contract_address_const::<
+            0x00001fb19EaFd5A682386AEFc229d027da9615743c004612245B7eC9E63F1CAF,
+        >(),
+        contract_address_const::<
+            0x00007fb19EaFd5A682386AEFc219d027da9615743c004612245B7eC9E6071CBF,
+        >(),
+        contract_address_const::<
+            0x00008fb19EaFd5A682386AEFc209d027da9615743c004612245B7eC9E6171CCF,
+        >(),
+        contract_address_const::<
+            0x00009fb19EaFd5A682386AEFc2DEd027da9615743c004612245B7eC9E6271CDF,
+        >(),
+        contract_address_const::<
+            0x00011fb19EaFd5A682386AEFc2DDd027da9615743c004612245B7eC9E6471CEF,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A682386AEFc2DCd027da9615743c004612245B7eC9E657101F,
+        >(),
+        contract_address_const::<
+            0x00208fb19EaFd5A682386AEFc2DBd027da9615743c004612245B7eC9E667111F,
+        >(),
+        contract_address_const::<
+            0x00309fb19EaFd5A682386AEFc2DAd027da9615743c004612245B7eC9E677121F,
+        >(),
+        contract_address_const::<
+            0x00409fb19EaFd5A682386AEFc2D8d027da9615743c004612245B7eC9E687131F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D7d027da9615743c004612254B7e09E6371C1A,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D6d027da9615743c004612264B7e19E6371C1B,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D5d027da9615743c004612274B7e29E6371C1C,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D4d027da9615743c004612284B7e39E6371C1D,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D3d027da9615743c004612294B7e49E6371C1E,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D2d027da9615743c004612241B7e59E6371C1F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D1d027da9615743c004612242B7e69E6371C0F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D0d027da9615743c004612243B7e79E6371C2F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D9F027da9615743c004612244B7e89E6371C3F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D9E027da9615743c004612245B7e99E6371C4F,
+        >(),
+        contract_address_const::<
+            0x00896fb19EaFd5A682386AEFc2DDd027da9615743c004612245B7eA9E6371C5F,
+        >(),
+        contract_address_const::<
+            0x00096fb19EaFd5A682386AEFc2DCd027da9615743c004612245B7eB9E6371C6F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc2DBd027da9615743c004612245B7eD9E6371C7F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc2DAd027da9615743c004612245B7eE9E6371C8F,
+        >(),
+        contract_address_const::<
+            0x00002fb19EaFd5A682386AEFc2D8d027da9615743c004612245B7eF9E6371C9F,
+        >(),
+        contract_address_const::<
+            0x00001fb19EaFd5A682386AEFc2D7d027da9615743c004612245B70C9E6371CAF,
+        >(),
+        contract_address_const::<
+            0x00007fb19EaFd5A682386AEFc2D6d027da9615743c004612245B71C9E6371CBF,
+        >(),
+        contract_address_const::<
+            0x00008fb19EaFd5A682386AEFc2D5d027da9615743c004612245B72C9E6371CCF,
+        >(),
+        contract_address_const::<
+            0x00009fb19EaFd5A682386AEFc2D4d027da9615743c004612245B73C9E6371CDF,
+        >(),
+        contract_address_const::<
+            0x00011fb19EaFd5A682386AEFc2D3d027da9615743c004612245B74C9E6371CEF,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A682386AEFc2D2d027da9615743c004612245B75C9E637101F,
+        >(),
+        contract_address_const::<
+            0x00208fb19EaFd5A682386AEFc2D1d027da9615743c004612245B76C9E637111F,
+        >(),
+        contract_address_const::<
+            0x00309fb19EaFd5A682386AEFc2D90d027da9615743c004612245B77C9E637121F,
+        >(),
+        contract_address_const::<
+            0x00409fb19EaFd5A682386AEFc2D99027da9615743c004612245B78C9E637131F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D98027da9615743c004612254B79C9E6371C1A,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D97027da9615743c004612264B1eC9E6301C1B,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D96027da9615743c004612274B2eC9E6311C1C,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D95027da9615743c004612284B3eC9E6321C1D,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D94027da9615743c004612294B4eC9E6331C1E,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D93027da9615743c004612241B5eC9E6341C1F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D92027da9615743c004612242B6eC9E6351C0F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D91027da9615743c004612243B8eC9E6361C2F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D90027da9615743c004612244B9eC9E6381C3F,
+        >(),
+        contract_address_const::<
+            0x03896fb19EaFd5A682386AEFc2D9dF27da9615743c00461224507eC9E6391C4F,
+        >(),
+        contract_address_const::<
+            0x00896fb19EaFd5A682386AEFc2D9dE27da9615743c00461224517eC9E63A1C5F,
+        >(),
+        contract_address_const::<
+            0x00096fb19EaFd5A682386AEFc2D9dD27da9615743c00461224527eC9E63B1C6F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc2D9dC27da9615743c00461224537eC9E63C1C7F,
+        >(),
+        contract_address_const::<
+            0x00006fb19EaFd5A682386AEFc2D9dB27da9615743c00461224547eC9E63D1C8F,
+        >(),
+        contract_address_const::<
+            0x00002fb19EaFd5A682386AEFc2D9dA27da9615743c00461224557eC9E63E1C9F,
+        >(),
+        contract_address_const::<
+            0x00001fb19EaFd5A682386AEFc2D9d927da9615743c00461224567eC9E63F1CAF,
+        >(),
+        contract_address_const::<
+            0x00007fb19EaFd5A682386AEFc2D9d827da9615743c00461224577eC9E6071CBF,
+        >(),
+        contract_address_const::<
+            0x00008fb19EaFd5A682386AEFc2D9d727da9615743c00461224587eC9E6171CCF,
+        >(),
+        contract_address_const::<
+            0x00009fb19EaFd5A682386AEFc2D9d627da9615743c00461224597eC9E6271CDF,
+        >(),
+        contract_address_const::<
+            0x00011fb19EaFd5A682386AEFc2D9d527da9615743c004612245A7eC9E6471CEF,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A682386AEFc2D9d427da9615743c004612245C7eC9E657101F,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A682386AEFc1D9d327da9615743c004612245C7eC9E657101F,
+        >(),
+        contract_address_const::<
+            0x00309fb19EaFd5A682386AEFc2D9d227da9615743c004612205E7eC9E677121F,
+        >(),
+        contract_address_const::<
+            0x00409fb19EaFd5A582386AEFc2D9d127da9615743c004612215B7eC9E687131F,
+        >(),
+        contract_address_const::<
+            0x00011fb19EaFd5A482386AEFc2D9d527da9615743c004612245A7eC9E6471CEF,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A382386AEFc2D9d427da9615743c004612245C7eC9E657101F,
+        >(),
+        contract_address_const::<
+            0x00017fb19EaFd5A282386AEFc1D9d327da9615743c004612245C7eC9E657101F,
+        >(),
+        contract_address_const::<
+            0x00309fb19EaFd5A182386AEFc2D9d227da9615743c004612205E7eC9E677121F,
+        >(),
+        contract_address_const::<
+            0x00409fb19EaFd5A082386AEFc2D9d127da9615743c004612215B7eC9E687131F,
         >(),
     ];
 
