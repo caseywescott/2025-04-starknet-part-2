@@ -126,6 +126,18 @@ pub mod Attestation {
                 );
         }
 
+        fn attest_with_extra_felts(ref self: ContractState, calldata: Span<felt252>) {
+            // Ensure we have at least the block hash
+            assert!(calldata.len() >= 1, "{}", Error::ATTEST_WRONG_BLOCK_HASH);
+
+            // Extract block hash from calldata
+            let block_hash = *calldata[0];
+
+            // Call the regular attest function with the block hash
+            self.attest(block_hash: block_hash);
+            // Extra felts are ignored, but we've validated the block hash
+        }
+
         fn get_last_epoch_attestation_done(
             self: @ContractState, staker_address: ContractAddress,
         ) -> Epoch {
@@ -272,7 +284,9 @@ pub mod Attestation {
 
         #[cfg(target: 'test')]
         fn get_target_block_hash(self: @ContractState, target_attestation_block: u64) -> felt252 {
-            Zero::zero()
+            // In test mode, return a deterministic value based on the block number
+            // This ensures different blocks have different hashes
+            target_attestation_block.into()
         }
     }
 }

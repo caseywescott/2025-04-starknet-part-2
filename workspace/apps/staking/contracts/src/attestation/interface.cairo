@@ -4,6 +4,7 @@ use starknet::ContractAddress;
 #[starknet::interface]
 pub trait IAttestation<TContractState> {
     fn attest(ref self: TContractState, block_hash: felt252);
+    fn attest_with_extra_felts(ref self: TContractState, calldata: Span<felt252>);
     fn is_attestation_done_in_curr_epoch(
         self: @TContractState, staker_address: ContractAddress,
     ) -> bool;
