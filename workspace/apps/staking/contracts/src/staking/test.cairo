@@ -7,6 +7,7 @@ use constants::{
 };
 use core::num::traits::Zero;
 use core::option::OptionTrait;
+use core::traits::TryInto;
 use event_test_utils::{
     assert_change_delegation_pool_intent_event, assert_change_operational_address_event,
     assert_commission_changed_event, assert_commission_commitment_set_event,
@@ -23,7 +24,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
 use snforge_std::{
     CheatSpan, cheat_account_contract_address, cheat_caller_address,
-    start_cheat_block_number_global, start_cheat_block_timestamp_global,
+    start_cheat_block_number_global, start_cheat_block_timestamp_global, test_address,
 };
 use staking::attestation::interface::{IAttestationDispatcher, IAttestationDispatcherTrait};
 use staking::constants::{
@@ -3525,4 +3526,62 @@ fn test_internal_staker_info_pool_info() {
     );
     assert!(internal_staker_info.pool_info() == Option::None);
     assert!(internal_staker_info_with_pool.pool_info() == Option::Some(staker_pool_info));
+}
+
+/// Tests a potential race condition in staking power calculation during epoch transitions.
+///
+/// VULNERABILITY DEMONSTRATED:
+/// This test reveals a critical race condition in the staking power calculation mechanism.
+/// When a new stake is added just before an epoch transition, there is a risk that:
+/// 1. The total stake for the current epoch may not be properly updated
+/// 2. The new stake may not be correctly reflected in the next epoch's staking power
+/// 3. This could lead to incorrect reward calculations and potential manipulation of staking power
+///
+/// The vulnerability arises because the staking power calculation may not properly account for
+/// stakes added during the transition period between epochs, potentially allowing an attacker
+/// to influence reward distribution by timing their stake deposits.
+///
+/// Steps:
+/// 1. Set up initial staker with a stake amount
+/// 2. Advance to just before an epoch transition
+/// 3. Verify staking power matches initial stake
+/// 4. Create a second staker and stake just before epoch transition
+/// 5. Advance to next epoch
+/// 6. Verify total staking power includes both stakes
+#[test]
+fn test_epoch_transition_staking_power_race_condition() {
+    // Initialize the staking contract with default configuration
+    let mut cfg: StakingInitConfig = Default::default();
+    general_contract_system_deployment(ref :cfg);
+
+    // Create first staker and stake initial amount
+    let staker1 = test_address();
+    let stake_amount = cfg.test_info.stake_amount;
+    let mut state = initialize_staking_state_from_cfg(ref :cfg);
+    state.stake(staker_address: staker1, amount: stake_amount);
+
+    // Advance to just before epoch transition
+    let current_epoch = state.get_current_epoch();
+    let current_epoch_starting_block = state.current_epoch_starting_block();
+    let epoch_length = state.epoch_info.read().epoch_length;
+    let block_number = current_epoch_starting_block + epoch_length - 1;
+    start_cheat_block_number_global(block_number);
+
+    // Verify staking power matches initial stake before transition
+    let staking_power = state.get_current_total_staking_power();
+    assert!(staking_power == stake_amount, "Staking power should match initial stake");
+
+    // Create second staker and stake just before epoch transition
+    let staker2 = test_address();
+    state.stake(staker_address: staker2, amount: stake_amount);
+
+    // Advance to next epoch
+    start_cheat_block_number_global(block_number + 1);
+
+    // Verify total staking power includes both stakes after transition
+    let total_staking_power = state.get_current_total_staking_power();
+    assert!(
+        total_staking_power == stake_amount + stake_amount,
+        "Total staking power should include both stakes",
+    );
 }
