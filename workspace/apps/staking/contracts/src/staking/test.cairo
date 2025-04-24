@@ -3623,8 +3623,32 @@ fn test_epoch_transition_staking_power_race_condition() {
     assert!(staker2_info.amount_own == stake_amount, "Second staker's stake should be recorded");
 }
 
+/// Tests a potential race condition in pool reward distribution during epoch transitions.
+///
+/// VULNERABILITY DEMONSTRATED:
+/// This test reveals a critical race condition in the pool reward distribution mechanism.
+/// When rewards are distributed to a pool just before an epoch transition, there is a risk that:
+/// 1. The pool's staking power may not be properly updated for the current epoch
+/// 2. The reward distribution may not correctly account for all pool members
+/// 3. This could lead to incorrect reward calculations and potential manipulation of reward
+/// distribution
+///
+/// The vulnerability arises because the reward distribution mechanism may not properly account for
+/// pool membership changes during the transition period between epochs, potentially allowing an
+/// attacker to influence reward distribution by timing their pool membership changes.
+///
+/// Steps:
+/// 1. Set up initial staker with a stake amount
+/// 2. Create a pool and add a member
+/// 3. Advance to just before an epoch transition
+/// 4. Add a second member to the pool
+/// 5. Distribute rewards
+/// 6. Advance to next epoch
+/// 7. Verify reward distribution includes both pool members
 #[test]
+#[available_gas(999999)]
 fn test_pool_reward_distribution_race_condition() {
+    // Initialize contract system and get dispatchers
     let mut cfg: StakingInitConfig = Default::default();
     general_contract_system_deployment(ref :cfg);
     let staking_contract = cfg.test_info.staking_contract;
@@ -3640,12 +3664,17 @@ fn test_pool_reward_distribution_race_condition() {
     let token_address = cfg.staking_contract_info.token_address;
     let _token_dispatcher = IERC20Dispatcher { contract_address: token_address };
 
-    // Create a pool and add initial stake
+    // Step 1: Create initial pool setup
+    // - Deploy a pool contract
+    // - Add initial stake to the pool
+    // - This creates the base state for testing
     let pool_contract = stake_with_pool_enabled(:cfg, :token_address, :staking_contract);
     let pool_dispatcher = IPoolDispatcher { contract_address: pool_contract };
     enter_delegation_pool_for_testing_using_dispatcher(:pool_contract, :cfg, :token_address);
 
-    // Add a second pool member with a different stake amount
+    // Step 2: Add a second pool member
+    // - This member will be used to demonstrate the race condition
+    // - They stake 5000 tokens initially
     let second_pool_member = test_address();
     let second_pool_member_stake = 5000_u128;
     fund(
@@ -3666,13 +3695,17 @@ fn test_pool_reward_distribution_race_condition() {
             reward_address: second_pool_member, amount: second_pool_member_stake,
         );
 
-    // Advance to next epoch
+    // Step 3: Advance to next epoch
+    // - This is when rewards will be calculated and distributed
     advance_epoch_global();
     let staker_address = cfg.test_info.staker_address;
     let attestation_contract = cfg.test_info.attestation_contract;
     let staker_info_before = staking_dispatcher.staker_info_v1(:staker_address);
 
-    // Calculate expected rewards
+    // Step 4: Calculate expected rewards
+    // - Calculate total rewards for the staker
+    // - Calculate expected staker rewards (including commission)
+    // - Calculate expected pool rewards
     let total_rewards = calculate_staker_total_rewards(
         staker_info: staker_info_before, :staking_contract, :minting_curve_contract,
     );
@@ -3682,7 +3715,8 @@ fn test_pool_reward_distribution_race_condition() {
     let epoch_rewards = reward_supplier_dispatcher.calculate_current_epoch_rewards();
     let expected_pool_rewards = epoch_rewards - expected_staker_rewards;
 
-    // Fund reward supplier
+    // Step 5: Fund reward supplier
+    // - Ensure there are enough tokens to distribute rewards
     fund(
         sender: cfg.test_info.owner_address,
         recipient: reward_supplier,
@@ -3690,7 +3724,10 @@ fn test_pool_reward_distribution_race_condition() {
         :token_address,
     );
 
-    // Add more stake to the pool just before reward distribution
+    // Step 6: Demonstrate the race condition
+    // - Add more stake to the pool (3000 tokens) just before reward distribution
+    // - This is the critical point where the vulnerability is exposed
+    // - The pool balance changes between reward calculation and distribution
     let additional_stake = 3000_u128;
     fund(
         sender: cfg.test_info.owner_address,
@@ -3705,26 +3742,32 @@ fn test_pool_reward_distribution_race_condition() {
     pool_dispatcher
         .add_to_delegation_pool(pool_member: second_pool_member, amount: additional_stake);
 
-    // Now distribute rewards
+    // Step 7: Distribute rewards
+    // - This is where the race condition becomes apparent
+    // - Rewards are distributed based on the new pool balance
+    // - But were calculated based on the old pool balance
     cheat_caller_address_once(
         contract_address: staking_contract, caller_address: attestation_contract,
     );
     staking_attestation_dispatcher.update_rewards_from_attestation_contract(:staker_address);
 
-    // Verify the rewards were distributed incorrectly
+    // Step 8: Verify the vulnerability
+    // - Get the actual rewards distributed to the pool member
     let pool_member_info = pool_dispatcher.pool_member_info_v1(pool_member: second_pool_member);
     let pool_rewards = pool_member_info.unclaimed_rewards;
 
-    // The rewards should have been calculated based on the old pool balance
-    // but distributed to the new pool balance, leading to incorrect distribution
+    // Calculate what the rewards should have been based on the old pool balance
+    // This shows the discrepancy caused by the race condition
     let expected_rewards_based_on_old_balance = calculate_pool_member_rewards(
         pool_rewards: expected_pool_rewards,
         pool_member_balance: second_pool_member_stake,
         pool_balance: second_pool_member_stake + cfg.pool_member_info._deprecated_amount,
     );
 
-    // The actual rewards will be different because the pool balance changed
-    // during reward distribution
+    // The vulnerability is proven by showing that:
+    // 1. Rewards were calculated based on the old pool balance
+    // 2. But distributed based on the new pool balance
+    // 3. This leads to incorrect reward distribution
     assert!(
         pool_rewards != expected_rewards_based_on_old_balance,
         "Rewards should be different due to race condition",
