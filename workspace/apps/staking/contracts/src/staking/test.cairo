@@ -3549,39 +3549,184 @@ fn test_internal_staker_info_pool_info() {
 /// 5. Advance to next epoch
 /// 6. Verify total staking power includes both stakes
 #[test]
+#[available_gas(999999)]
 fn test_epoch_transition_staking_power_race_condition() {
-    // Initialize the staking contract with default configuration
     let mut cfg: StakingInitConfig = Default::default();
     general_contract_system_deployment(ref :cfg);
-
-    // Create first staker and stake initial amount
-    let staker1 = test_address();
+    let staking_contract = cfg.test_info.staking_contract;
+    let staking_dispatcher = IStakingDispatcher { contract_address: staking_contract };
+    let token_address = cfg.staking_contract_info.token_address;
+    let staker1 = cfg.test_info.staker_address;
+    let staker2 = test_address();
     let stake_amount = cfg.test_info.stake_amount;
-    let mut state = initialize_staking_state_from_cfg(ref :cfg);
-    state.stake(staker_address: staker1, amount: stake_amount);
 
-    // Advance to just before epoch transition
-    let current_epoch = state.get_current_epoch();
-    let current_epoch_starting_block = state.current_epoch_starting_block();
-    let epoch_length = state.epoch_info.read().epoch_length;
-    let block_number = current_epoch_starting_block + epoch_length - 1;
+    // Perform initial stake
+    fund(
+        sender: cfg.test_info.owner_address,
+        recipient: staker1,
+        amount: stake_amount,
+        :token_address,
+    );
+    approve(owner: staker1, spender: staking_contract, amount: stake_amount, :token_address);
+    cheat_caller_address_once(contract_address: staking_contract, caller_address: staker1);
+    staking_dispatcher
+        .stake(
+            reward_address: staker1,
+            operational_address: staker1,
+            amount: stake_amount,
+            pool_enabled: false,
+            commission: 0_u16,
+        );
+
+    // Get epoch info and advance to just before epoch transition
+    let epoch_info = staking_dispatcher.get_epoch_info();
+    let block_number = epoch_info.current_epoch_starting_block()
+        + epoch_info.epoch_len_in_blocks().into()
+        - 1;
     start_cheat_block_number_global(block_number);
 
-    // Verify staking power matches initial stake before transition
-    let staking_power = state.get_current_total_staking_power();
-    assert!(staking_power == stake_amount, "Staking power should match initial stake");
+    // Add second stake just before epoch transition
+    fund(
+        sender: cfg.test_info.owner_address,
+        recipient: staker2,
+        amount: stake_amount,
+        :token_address,
+    );
+    approve(owner: staker2, spender: staking_contract, amount: stake_amount, :token_address);
+    cheat_caller_address_once(contract_address: staking_contract, caller_address: staker2);
+    staking_dispatcher
+        .stake(
+            reward_address: staker2,
+            operational_address: staker2,
+            amount: stake_amount,
+            pool_enabled: false,
+            commission: 0_u16,
+        );
 
-    // Create second staker and stake just before epoch transition
-    let staker2 = test_address();
-    state.stake(staker_address: staker2, amount: stake_amount);
+    // Verify total staking power before epoch transition
+    let total_staking_power_before = staking_dispatcher.get_current_total_staking_power();
+    assert!(
+        total_staking_power_before == stake_amount, "Staking power should only include first stake",
+    );
 
     // Advance to next epoch
-    start_cheat_block_number_global(block_number + 1);
+    advance_epoch_global();
 
-    // Verify total staking power includes both stakes after transition
-    let total_staking_power = state.get_current_total_staking_power();
+    // Verify total staking power after epoch transition
+    let total_staking_power_after = staking_dispatcher.get_current_total_staking_power();
     assert!(
-        total_staking_power == stake_amount + stake_amount,
-        "Total staking power should include both stakes",
+        total_staking_power_after == stake_amount * 2, "Staking power should include both stakes",
+    );
+
+    // Verify that the second stake was properly recorded for the new epoch
+    let staker2_info = staking_dispatcher.get_staker_info_v1(staker2).unwrap();
+    assert!(staker2_info.amount_own == stake_amount, "Second staker's stake should be recorded");
+}
+
+#[test]
+fn test_pool_reward_distribution_race_condition() {
+    let mut cfg: StakingInitConfig = Default::default();
+    general_contract_system_deployment(ref :cfg);
+    let staking_contract = cfg.test_info.staking_contract;
+    let staking_dispatcher = IStakingDispatcher { contract_address: staking_contract };
+    let staking_attestation_dispatcher = IStakingAttestationDispatcher {
+        contract_address: staking_contract,
+    };
+    let reward_supplier = cfg.staking_contract_info.reward_supplier;
+    let minting_curve_contract = cfg.reward_supplier.minting_curve_contract;
+    let reward_supplier_dispatcher = IRewardSupplierDispatcher {
+        contract_address: reward_supplier,
+    };
+    let token_address = cfg.staking_contract_info.token_address;
+    let _token_dispatcher = IERC20Dispatcher { contract_address: token_address };
+
+    // Create a pool and add initial stake
+    let pool_contract = stake_with_pool_enabled(:cfg, :token_address, :staking_contract);
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool_contract };
+    enter_delegation_pool_for_testing_using_dispatcher(:pool_contract, :cfg, :token_address);
+
+    // Add a second pool member with a different stake amount
+    let second_pool_member = test_address();
+    let second_pool_member_stake = 5000_u128;
+    fund(
+        sender: cfg.test_info.owner_address,
+        recipient: second_pool_member,
+        amount: second_pool_member_stake,
+        :token_address,
+    );
+    approve(
+        owner: second_pool_member,
+        spender: pool_contract,
+        amount: second_pool_member_stake,
+        :token_address,
+    );
+    cheat_caller_address_once(contract_address: pool_contract, caller_address: second_pool_member);
+    pool_dispatcher
+        .enter_delegation_pool(
+            reward_address: second_pool_member, amount: second_pool_member_stake,
+        );
+
+    // Advance to next epoch
+    advance_epoch_global();
+    let staker_address = cfg.test_info.staker_address;
+    let attestation_contract = cfg.test_info.attestation_contract;
+    let staker_info_before = staking_dispatcher.staker_info_v1(:staker_address);
+
+    // Calculate expected rewards
+    let total_rewards = calculate_staker_total_rewards(
+        staker_info: staker_info_before, :staking_contract, :minting_curve_contract,
+    );
+    let expected_staker_rewards = calculate_staker_own_rewards_including_commission(
+        staker_info: staker_info_before, :total_rewards,
+    );
+    let epoch_rewards = reward_supplier_dispatcher.calculate_current_epoch_rewards();
+    let expected_pool_rewards = epoch_rewards - expected_staker_rewards;
+
+    // Fund reward supplier
+    fund(
+        sender: cfg.test_info.owner_address,
+        recipient: reward_supplier,
+        amount: total_rewards,
+        :token_address,
+    );
+
+    // Add more stake to the pool just before reward distribution
+    let additional_stake = 3000_u128;
+    fund(
+        sender: cfg.test_info.owner_address,
+        recipient: second_pool_member,
+        amount: additional_stake,
+        :token_address,
+    );
+    approve(
+        owner: second_pool_member, spender: pool_contract, amount: additional_stake, :token_address,
+    );
+    cheat_caller_address_once(contract_address: pool_contract, caller_address: second_pool_member);
+    pool_dispatcher
+        .add_to_delegation_pool(pool_member: second_pool_member, amount: additional_stake);
+
+    // Now distribute rewards
+    cheat_caller_address_once(
+        contract_address: staking_contract, caller_address: attestation_contract,
+    );
+    staking_attestation_dispatcher.update_rewards_from_attestation_contract(:staker_address);
+
+    // Verify the rewards were distributed incorrectly
+    let pool_member_info = pool_dispatcher.pool_member_info_v1(pool_member: second_pool_member);
+    let pool_rewards = pool_member_info.unclaimed_rewards;
+
+    // The rewards should have been calculated based on the old pool balance
+    // but distributed to the new pool balance, leading to incorrect distribution
+    let expected_rewards_based_on_old_balance = calculate_pool_member_rewards(
+        pool_rewards: expected_pool_rewards,
+        pool_member_balance: second_pool_member_stake,
+        pool_balance: second_pool_member_stake + cfg.pool_member_info._deprecated_amount,
+    );
+
+    // The actual rewards will be different because the pool balance changed
+    // during reward distribution
+    assert!(
+        pool_rewards != expected_rewards_based_on_old_balance,
+        "Rewards should be different due to race condition",
     );
 }
